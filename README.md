@@ -1,0 +1,226 @@
+# 智能RSS线报推送系统 XianBaoPush
+
+一个智能RSS线报推送系统，能够自动抓取RSS源内容，进行智能转链处理，并推送到QQ群。系统支持多平台返利转链（淘宝、京东、拼多多）。
+
+## ✨ 主要特性
+
+### 🎯 智能返利转链
+- **淘宝/天猫返利**: 集成大淘客API，自动转换淘宝商品链接
+- **京东返利**: 集成京品库API，自动转换京东商品链接  
+- **拼多多返利**: 集成多多进宝API，自动转换拼多多商品链接
+- **智能链接识别**: 自动识别文本中的商品链接并进行转换
+- **容错机制**: 转链失败时不影响系统运行，保持原始内容推送
+
+### 📡 RSS订阅管理
+- 支持多RSS源同时监控
+- 可配置推送间隔和目标QQ群
+- 智能文本清理和格式化
+- 时间分界点机制，避免重复推送
+- 统一状态管理
+
+### 🖥️ 现代化GUI界面
+- 基于PyQt6的现代化桌面应用
+- 直观的配置管理界面
+- 实时日志显示
+- 环境检查和依赖自动安装
+
+## 🚀 快速开始
+
+### 环境要求
+- Python 3.8+
+- Windows 10/11 (推荐)
+- PyQt6 GUI框架
+
+### 安装步骤
+
+1. **克隆项目**
+```bash
+git clone https://github.com/fyyo/XianBaoPush.git
+cd XianBaoPush
+```
+
+2. **安装依赖**
+```bash
+pip install -r requirements.txt
+```
+
+3. **配置系统**
+```bash
+# 复制配置模板
+cp config.example.json config.json
+# 编辑配置文件，填入您的API密钥和RSS源
+```
+
+4. **启动应用**
+```bash
+# GUI界面启动
+python main.py
+
+# 或者后台运行
+python run.pyw
+```
+
+## 📋 配置说明
+
+### 配置文件结构
+系统使用 `config.json` 文件进行配置，首次运行时请复制 `config.example.json` 并重命名。
+
+### 返利API配置
+
+#### 大淘客 (淘宝/天猫)
+- 注册地址: https://www.dataoke.com/
+- 获取App Key和App Secret
+- 在配置文件中启用并填入密钥
+
+#### 京品库 (京东)  
+- 注册地址: https://www.jingpinku.com/
+- 获取App Key、App Secret和Union ID
+- 在配置文件中启用并填入密钥
+
+#### 多多进宝 (拼多多)
+- 注册地址: https://jinbao.pinduoduo.com/
+- 获取Client ID、Client Secret和PID
+- 在配置文件中启用并填入密钥
+
+### RSS订阅配置
+- **rss_url**: 要监控的RSS源URL
+- **interval**: 检查更新的时间间隔（分钟）
+- **group_id**: 推送目标QQ群号
+- **llonebot_api_url**: LLOneBot服务的API地址
+
+### 示例配置
+```json
+{
+  "rss_sources": [
+    {
+      "rss_url": "https://example.com/rss.xml",
+      "interval": 5,
+      "group_id": "YOUR_QQ_GROUP_ID",
+      "llonebot_api_url": "http://localhost:3000"
+    }
+  ],
+  "affiliate_config": {
+    "dataoke": {
+      "enabled": true,
+      "app_key": "YOUR_DATAOKE_APP_KEY",
+      "app_secret": "YOUR_DATAOKE_APP_SECRET"
+    }
+  }
+}
+```
+
+## 🎮 使用方法
+
+### GUI模式
+1. 运行 `python main.py` 启动图形界面
+2. 点击"检查环境"确保依赖正确安装
+3. 点击"打开配置"进行API和RSS配置
+4. 点击"启动服务"开始自动监控
+
+### 命令行模式
+运行 `python run.pyw` 可在后台静默运行
+
+## 🔧 技术架构
+
+### 核心模块
+- **src/core/affiliate_converter.py**: 返利转链核心引擎
+- **src/core/rss_fetcher.py**: RSS内容抓取器
+- **src/core/qq_pusher.py**: QQ群消息推送器
+- **src/core/config_manager.py**: 配置管理器
+
+### GUI界面
+- **src/gui/main_window.py**: 主窗口界面
+- **src/gui/config_dialog.py**: 配置对话框
+
+### 工具模块
+- **src/utils/text_cleaner.py**: 文本清理工具
+
+## 🛡️ 安全特性
+
+- 配置信息本地存储，不上传到GitHub
+- API调用签名验证
+- 完善的错误处理和重试机制
+- 详细的日志记录和监控
+- 转链失败时的容错保护
+
+## 📊 支持的链接类型
+
+### 淘宝/天猫
+- `item.taobao.com`
+- `detail.tmall.com`
+- `s.click.taobao.com`
+
+### 京东
+- `item.jd.com`
+- `item.m.jd.com`
+- `u.jd.com`
+
+### 拼多多
+- `mobile.yangkeduo.com`
+- `p.pinduoduo.com`
+
+## 🔄 更新日志
+
+### v4.0 (当前版本)
+- ✅ 完全重构为桌面GUI应用
+- ✅ 智能返利转链功能
+- ✅ 支持三大电商平台返利
+- ✅ 修复时间处理和显示问题
+- ✅ 优化文本清理机制
+- ✅ 改进错误处理和容错机制
+- ✅ 统一状态文件管理
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request来改进项目！
+
+### 开发环境搭建
+1. Fork本项目
+2. 克隆到本地
+3. 安装依赖：`pip install -r requirements.txt`
+4. 创建配置文件：`cp config.example.json config.json`
+5. 进行开发和测试
+
+### 提交规范
+- 提交前请确保代码通过基本测试
+- 提交信息请使用中文，格式清晰
+- 大的功能改动请先创建Issue讨论
+
+## 📄 许可证
+
+本项目采用MIT许可证，详见[LICENSE](LICENSE)文件。
+
+## 🆘 常见问题
+
+### Q: 首次启动如何配置？
+A: 复制 `config.example.json` 为 `config.json`，然后编辑填入您的API密钥和RSS源。
+
+### Q: GUI界面无法显示？
+A: 请确保已正确安装PyQt6依赖，运行 `pip install PyQt6`。
+
+### Q: 返利转链不生效？
+A: 请检查API密钥配置是否正确，确保账户有足够权限和余额。
+
+### Q: QQ群推送失败？
+A: 请确认LLOneBot服务正常运行，API地址配置正确，机器人已加入目标群。
+
+### Q: 系统会重复推送相同线报吗？
+A: 不会，系统使用时间分界点机制和状态文件管理，确保不重复推送。
+
+### Q: 转链失败会影响系统运行吗？
+A: 不会，系统具有完善的容错机制，转链失败时会保持原内容继续推送。
+
+## 📞 技术支持
+
+如果您在使用过程中遇到问题，可以：
+1. 查看项目Wiki文档
+2. 提交GitHub Issue
+3. 查看系统日志文件 `logs/rss_qq_app.log`
+
+---
+
+**智能RSS线报推送系统 - 让线报推送更智能，让返利更简单！** 🎉
+
+[![GitHub stars](https://img.shields.io/github/stars/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/issues)
+[![GitHub license](https://img.shields.io/github/license/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/blob/main/LICENSE)

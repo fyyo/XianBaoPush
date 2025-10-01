@@ -1,0 +1,33 @@
+{
+  "rss_sources": [
+    {
+      "rss_url": "https://example.com/rss.xml",
+      "interval": 5,
+      "group_id": "YOUR_QQ_GROUP_ID",
+      "llonebot_api_url": "http://localhost:3000"
+    }
+  ],
+  "affiliate_config": {
+    "dataoke": {
+      "enabled": true,
+      "app_key": "YOUR_DATAOKE_APP_KEY",
+      "app_secret": "YOUR_DATAOKE_APP_SECRET"
+    },
+    "jingpinku": {
+      "enabled": true,
+      "appid": "YOUR_JINGPINKU_APPID",
+      "appkey": "YOUR_JINGPINKU_APPKEY",
+      "union_id": "YOUR_JINGPINKU_UNION_ID"
+    },
+    "pdd": {
+      "enabled": true,
+      "client_id": "YOUR_PDD_CLIENT_ID",
+      "client_secret": "YOUR_PDD_CLIENT_SECRET",
+      "pid": "YOUR_PDD_PID"
+    },
+    "batch_settings": {
+      "convert_enabled": true,
+      "max_convert_per_batch": 8
+    }
+  }
+}
