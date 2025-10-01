@@ -19,16 +19,25 @@ class CheckRequirementsThread(QThread):
     def run(self):
         missing_packages = []
         try:
-            with open('requirements.txt', 'r', encoding='utf-8') as f:
-                requirements = [line.strip() for line in f if line.strip()]
-            
-            for package in requirements:
-                try:
-                    pkg_resources.require(package)
-                except (pkg_resources.DistributionNotFound, pkg_resources.VersionConflict):
-                    # 从包名中提取纯名称，例如 "PyQt6==6.7.0" -> "PyQt6"
-                    package_name = package.split('==')[0].split('>')[0].split('<')[0]
-                    missing_packages.append(package_name)
+            # 支持PyInstaller打包后的资源文件访问
+            import sys
+            if hasattr(sys, '_MEIPASS'):
+                # 打包后的exe程序，跳过依赖检查（依赖已经打包在exe中）
+                print("✅ 运行环境：已打包程序，跳过依赖检查")
+                missing_packages = []
+            else:
+                # 开发环境，进行正常的依赖检查
+                requirements_path = 'requirements.txt'
+                with open(requirements_path, 'r', encoding='utf-8') as f:
+                    requirements = [line.strip() for line in f if line.strip()]
+                
+                for package in requirements:
+                    try:
+                        pkg_resources.require(package)
+                    except (pkg_resources.DistributionNotFound, pkg_resources.VersionConflict):
+                        # 从包名中提取纯名称，例如 "PyQt6==6.7.0" -> "PyQt6"
+                        package_name = package.split('==')[0].split('>')[0].split('<')[0]
+                        missing_packages.append(package_name)
         except Exception as e:
             # 如果requirements.txt读取失败等
             missing_packages.append(f"检查时发生错误: {e}")
