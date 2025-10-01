@@ -34,7 +34,7 @@ def install_dependencies(on_finish_callback):
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 startupinfo.wShowWindow = subprocess.SW_HIDE
             
-            subprocess.run(command, check=True, startupinfo=startupinfo)
+            subprocess.run(command, check=True, startupinfo=startupinfo, encoding='utf-8', errors='ignore')
             on_finish_callback(True)
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             on_finish_callback(False, str(e))

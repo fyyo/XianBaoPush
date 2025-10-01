@@ -19,7 +19,7 @@ class CheckRequirementsThread(QThread):
     def run(self):
         missing_packages = []
         try:
-            with open('requirements.txt', 'r') as f:
+            with open('requirements.txt', 'r', encoding='utf-8') as f:
                 requirements = [line.strip() for line in f if line.strip()]
             
             for package in requirements:
@@ -43,7 +43,7 @@ class InstallRequirementsThread(QThread):
         try:
             # 使用国内镜像加速
             command = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"]
-            result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
+            result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             self.finished.emit(True, result.stdout)
         except subprocess.CalledProcessError as e:
             self.finished.emit(False, e.stderr)
