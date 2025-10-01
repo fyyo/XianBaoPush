@@ -1,9 +1,12 @@
+# RSS解析和HTTP请求
 feedparser==6.0.11
-Flask==3.0.2
-Flask-CORS==4.0.0
-APScheduler==3.10.4
 requests==2.31.0
-python-dotenv==1.0.0
+
+# HTML解析和清理
 beautifulsoup4==4.12.2
+
+# GUI界面 - PyQt6
 PyQt6==6.7.0
-PyQt6-WebEngine==6.7.0
+
+# 日志轮转处理（Python标准库的logging.handlers已包含RotatingFileHandler）
+# 其他依赖都是Python标准库模块，无需额外安装
