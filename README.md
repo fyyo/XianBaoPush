@@ -1,5 +1,11 @@
 # 智能RSS线报推送系统 XianBaoPush
 
+**智能RSS线报推送系统 - 让线报推送更智能，让返利更简单！** 🎉
+
+[![GitHub stars](https://img.shields.io/github/stars/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/issues)
+[![GitHub license](https://img.shields.io/github/license/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/blob/main/LICENSE)
+
 一个智能RSS线报推送系统，能够自动抓取RSS源内容，进行智能转链处理，并推送到QQ群。系统支持多平台返利转链（淘宝、京东、拼多多）。
 
 ## ✨ 主要特性
@@ -259,11 +265,15 @@ A: 不会，系统具有完善的容错机制，转链失败时会保持原内�
 1. 查看项目Wiki文档
 2. 提交GitHub Issue
 3. 查看系统日志文件 `logs/rss_qq_app.log`
+4. 加入QQ交流群获取帮助
+
+### 加入QQ交流群
+
+<div align="center">
+  <img src="docs/qq_group.jpg" alt="QQ交流群" width="300">
+  <p>扫码加入QQ交流群，获取技术支持和交流使用经验</p>
+</div>
 
 ---
 
-**智能RSS线报推送系统 - 让线报推送更智能，让返利更简单！** 🎉
-
-[![GitHub stars](https://img.shields.io/github/stars/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/issues)
-[![GitHub license](https://img.shields.io/github/license/fyyo/XianBaoPush.svg)](https://github.com/fyyo/XianBaoPush/blob/main/LICENSE)
+**Made with ❤️ by XianBaoPush Team**
