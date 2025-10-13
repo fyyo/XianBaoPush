@@ -52,11 +52,12 @@ SENT_ENTRIES_FILE = "sent_entries.json"
 sent_entries_lock = threading.Lock()
 
 def load_system_state():
-    """加载系统状态（包含已发送条目、首次运行状态、时间分界点）"""
+    """加载系统状态（包含已发送条目、每个RSS源的首次运行状态、时间分界点）"""
     with sent_entries_lock:
         default_state = {
             "sent_entries": [],
-            "first_run_completed": False,
+            "first_run_completed": False,  # 保留用于兼容旧版本
+            "first_run_status": {},  # 新增：每个RSS源独立的首次运行状态 {rss_url: True/False}
             "last_processed_time": {}
         }
         
@@ -71,26 +72,33 @@ def load_system_state():
             if isinstance(data, list):
                 return {
                     "sent_entries": data,
-                    "first_run_completed": True,  # 如果有旧数据，说明不是首次运行
+                    "first_run_completed": True,
+                    "first_run_status": {},
                     "last_processed_time": {}
                 }
             
             # 确保所有必要的字段存在
             state = default_state.copy()
             state.update(data)
+            
+            # 确保 first_run_status 字段存在
+            if "first_run_status" not in state:
+                state["first_run_status"] = {}
+            
             return state
             
         except Exception as e:
             logging.error(f"加载系统状态失败: {e}")
             return default_state
 
-def save_system_state(sent_entries, first_run_completed, last_processed_time):
+def save_system_state(sent_entries, first_run_completed, last_processed_time, first_run_status=None):
     """保存系统状态"""
     with sent_entries_lock:
         try:
             state = {
                 "sent_entries": list(sent_entries),
                 "first_run_completed": first_run_completed,
+                "first_run_status": first_run_status if first_run_status is not None else {},
                 "last_processed_time": last_processed_time
             }
             
@@ -104,10 +112,21 @@ def load_sent_entries():
     state = load_system_state()
     return set(state["sent_entries"])
 
-def is_first_run():
-    """检查是否为首次运行"""
+def is_first_run(rss_url=None):
+    """检查是否为首次运行
+    
+    Args:
+        rss_url: RSS源URL，如果提供则检查该源的首次运行状态；否则检查全局状态
+    """
     state = load_system_state()
-    return not state["first_run_completed"]
+    
+    if rss_url:
+        # 检查特定RSS源的首次运行状态
+        # 如果该RSS源未记录，则认为是首次运行
+        return not state["first_run_status"].get(rss_url, False)
+    else:
+        # 兼容旧代码：检查全局首次运行状态
+        return not state["first_run_completed"]
 
 def load_last_processed_time(rss_url):
     """加载RSS源的最后处理时间"""
@@ -123,19 +142,217 @@ def save_last_processed_time(rss_url, timestamp):
     save_system_state(
         set(state["sent_entries"]),
         state["first_run_completed"],
-        state["last_processed_time"]
+        state["last_processed_time"],
+        state["first_run_status"]
     )
 
-def mark_first_run_completed():
-    """标记首次运行完成"""
+def mark_first_run_completed(rss_url=None):
+    """标记首次运行完成
+    
+    Args:
+        rss_url: RSS源URL，如果提供则标记该源完成首次运行；否则标记全局完成
+    """
     state = load_system_state()
-    state["first_run_completed"] = True
+    
+    if rss_url:
+        # 标记特定RSS源的首次运行已完成
+        state["first_run_status"][rss_url] = True
+        logger.info(f"RSS源 '{rss_url}' 首次运行保护已完成")
+    else:
+        # 兼容旧代码：标记全局首次运行完成
+        state["first_run_completed"] = True
     
     # 保存整个状态
     save_system_state(
         set(state["sent_entries"]),
-        True,
-        state["last_processed_time"]
+        state["first_run_completed"],
+        state["last_processed_time"],
+        state["first_run_status"]
+    )
+
+def process_single_rss_source(rss_url):
+    """处理单个RSS源的函数 - 每个定时任务独立调用"""
+    # 检查停止标志
+    if _stop_flag.is_set():
+        logger.info("收到停止信号，跳过RSS处理")
+        return
+    
+    # 加载配置找到对应的RSS源
+    configs = load_rss_configs()
+    config = None
+    for c in configs:
+        if c["rss_url"] == rss_url:
+            config = c
+            break
+    
+    if not config:
+        logger.warning(f"未找到RSS源配置: {rss_url}")
+        return
+    
+    # 加载完整配置
+    from src.core.config_manager import load_config
+    full_config = load_config()
+    affiliate_config = full_config.get('affiliate_config', {})
+    
+    affiliate_converter = None
+    if affiliate_config and any(affiliate_config.get(platform, {}).get('enabled', False)
+                              for platform in ['dataoke', 'jingpinku', 'pdd']):
+        affiliate_converter = AffiliateConverter(full_config)
+        logger.info("返利转链功能已启用")
+
+    sent_entries = load_sent_entries()
+    first_run = is_first_run(rss_url)  # 检查该RSS源的首次运行状态
+    
+    if first_run:
+        logger.info(f"RSS源 '{config['rss_url']}' 首次启动，启用保护机制 - 只处理最新10条")
+    
+    # 只处理这一个RSS源
+    try:
+        entries = parse_feed(config["rss_url"])
+        if not entries:
+            logger.warning(f"RSS源 '{config['rss_url']}' 未返回任何内容，跳过处理")
+            return
+
+        # 获取最后处理时间
+        last_processed_time = load_last_processed_time(config["rss_url"])
+        
+        if first_run:
+            # 首次启动：只处理最新10条
+            entries = entries[:10]
+            logger.info(f"首次启动保护：RSS源 '{config['rss_url']}' 只处理最新 {len(entries)} 条")
+            
+            # 记录首次启动的当前时间作为分界点，这样下次只会获取新内容
+            if entries:
+                import time
+                import calendar
+                # 使用当前时间作为分界点
+                cutoff_time = int(time.time())
+                save_last_processed_time(config["rss_url"], cutoff_time)
+                beijing_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cutoff_time))
+                logger.info(f"设置时间分界点：{beijing_time} (北京时间)")
+        else:
+            # 非首次启动：只处理时间晚于分界点的条目
+            if last_processed_time:
+                import time as time_module
+                import calendar
+                filtered_entries = []
+                for entry in entries:
+                    if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                        entry_time = calendar.timegm(entry.published_parsed)
+                        if entry_time > last_processed_time:
+                            filtered_entries.append(entry)
+                
+                entries = filtered_entries
+                if entries:
+                    logger.info(f"时间过滤：RSS源 '{config['rss_url']}' 发现 {len(entries)} 条新线报")
+                else:
+                    logger.info(f"时间过滤：RSS源 '{config['rss_url']}' 没有新线报")
+                    return
+
+        # 批量转链控制
+        batch_settings = affiliate_config.get('batch_settings', {}) if affiliate_config else {}
+        max_convert_per_batch = batch_settings.get('max_convert_per_batch', 5)
+        convert_enabled = batch_settings.get('convert_enabled', True)
+        
+        processed_count = 0
+        converted_count = 0
+        
+        for entry in entries:
+            if _stop_flag.is_set():
+                logger.info("收到停止信号，中断RSS条目处理")
+                return
+                
+            try:
+                entry_id = generate_entry_id(config["rss_url"], entry)
+                
+                if entry_id in sent_entries:
+                    continue
+
+                clean_title = clean_html_tags(entry.title) if entry.title else "无标题"
+                link = getattr(entry, 'link', '') or ''
+                
+                webpage_content = ""
+                if link:
+                    webpage_content = fetch_webpage_content(link)
+                
+                message_content = ""
+                raw_content = ""
+                
+                if webpage_content:
+                    raw_content = webpage_content
+                else:
+                    raw_content = getattr(entry, 'summary', '') or getattr(entry, 'description', '')
+                
+                if raw_content:
+                    from src.utils.text_cleaner import advanced_text_cleanup
+                    message_content = advanced_text_cleanup(raw_content, clean_title, max_length=1200)
+                
+                if not message_content:
+                    message_content = clean_title
+
+                should_convert = (convert_enabled and
+                                affiliate_converter and
+                                message_content and
+                                converted_count < max_convert_per_batch)
+                
+                if should_convert:
+                    try:
+                        urls = affiliate_converter._extract_urls(message_content)
+                        if urls:
+                            converted_content = affiliate_converter.convert_links(message_content)
+                            if converted_content != message_content:
+                                logger.info(f"成功转换返利链接 ({converted_count + 1}/{max_convert_per_batch}): {entry_id}")
+                                message_content = converted_content
+                                converted_count += 1
+                    except Exception as e:
+                        logger.error(f"返利转链处理失败: {e}")
+
+                if len(message_content) > 1500:
+                    message_content = message_content[:1500] + "..."
+                    logger.info(f"内容过长，已截断: {entry_id}")
+
+                if link:
+                    if message_content:
+                        message_content += f"\n\n📰 完整线报：{link}"
+                    else:
+                        message_content = f"📰 完整线报：{link}"
+
+                if message_content and send_group_message(config['llonebot_api_url'], config["group_id"], message_content):
+                    sent_entries.add(entry_id)
+                    processed_count += 1
+                    logger.info(f"成功推送: {clean_title[:50]}...")
+                else:
+                    logger.warning(f"推送失败: {clean_title[:50]}...")
+            
+            except Exception as e:
+                logger.error(f"处理RSS条目 '{getattr(entry, 'title', 'N/A')}' 时出错: {e}", exc_info=True)
+        
+        if processed_count > 0:
+            logger.info(f"RSS源 '{config['rss_url']}' 成功处理 {processed_count} 条新内容")
+            
+            if entries:
+                latest_entry = entries[0]
+                if hasattr(latest_entry, 'published_parsed') and latest_entry.published_parsed:
+                    import time
+                    import calendar
+                    new_cutoff_time = calendar.timegm(latest_entry.published_parsed)
+                    save_last_processed_time(config["rss_url"], new_cutoff_time)
+                    beijing_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(new_cutoff_time))
+                    logger.info(f"更新时间分界点：{beijing_time} (北京时间)")
+    
+    except Exception as e:
+        logger.error(f"处理RSS源 '{config.get('rss_url', 'N/A')}' 时发生严重错误: {e}", exc_info=True)
+    
+    # 保存系统状态并标记该RSS源首次运行完成
+    if first_run:
+        mark_first_run_completed(rss_url)
+    
+    state = load_system_state()
+    save_system_state(
+        sent_entries,
+        state["first_run_completed"],
+        state["last_processed_time"],
+        state["first_run_status"]
     )
 
 def process_and_send():
@@ -343,20 +560,23 @@ def process_and_send():
         logger.info("首次启动保护机制已完成")
 
 def update_scheduler(scheduler_instance, configs):
-    """更新调度器"""
+    """更新调度器 - 每个RSS源独立任务"""
     if scheduler_instance:
         scheduler_instance.remove_all_jobs()
         for config in configs:
             interval = config.get("interval", 60)
-            job_id = f"rss_{hash(config['rss_url'])}"
+            rss_url = config['rss_url']
+            job_id = f"rss_{hash(rss_url)}"
+            
+            # 为每个RSS源创建独立的处理函数（使用闭包捕获rss_url）
             scheduler_instance.add_job(
-                process_and_send,
+                lambda url=rss_url: process_single_rss_source(url),
                 'interval',
                 minutes=interval,
                 id=job_id,
                 replace_existing=True
             )
-            logger.info(f"已添加定时任务: {config['rss_url']} (间隔: {interval}分钟)")
+            logger.info(f"已添加独立定时任务: {rss_url} (间隔: {interval}分钟)")
 
 def start_scheduler():
     """启动调度器"""
