@@ -33,8 +33,14 @@ if not logger.handlers:  # 避免重复添加处理器
     if not os.path.exists("logs"):
         os.makedirs("logs")
 
-    # 文件处理器（带轮换）
-    file_handler = RotatingFileHandler("logs/rss_qq_app.log", maxBytes=1024*1024, backupCount=5, encoding='utf-8')
+    # 文件处理器（带轮换）- 增加日志容量和备份数
+    # maxBytes=10MB，backupCount=30（保留约300MB的日志历史）
+    file_handler = RotatingFileHandler(
+        "logs/rss_qq_app.log",
+        maxBytes=10*1024*1024,  # 10MB per file
+        backupCount=30,  # Keep 30 backup files
+        encoding='utf-8'
+    )
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     
@@ -342,18 +348,25 @@ def process_single_rss_source(rss_url):
     
     except Exception as e:
         logger.error(f"处理RSS源 '{config.get('rss_url', 'N/A')}' 时发生严重错误: {e}", exc_info=True)
+    finally:
+        # 强制刷新日志，确保所有日志都写入磁盘
+        for handler in logger.handlers:
+            handler.flush()
     
     # 保存系统状态并标记该RSS源首次运行完成
-    if first_run:
-        mark_first_run_completed(rss_url)
-    
-    state = load_system_state()
-    save_system_state(
-        sent_entries,
-        state["first_run_completed"],
-        state["last_processed_time"],
-        state["first_run_status"]
-    )
+    try:
+        if first_run:
+            mark_first_run_completed(rss_url)
+        
+        state = load_system_state()
+        save_system_state(
+            sent_entries,
+            state["first_run_completed"],
+            state["last_processed_time"],
+            state["first_run_status"]
+        )
+    except Exception as e:
+        logger.error(f"保存系统状态失败: {e}", exc_info=True)
 
 def process_and_send():
     """处理RSS并发送消息的主函数"""
@@ -568,15 +581,118 @@ def update_scheduler(scheduler_instance, configs):
             rss_url = config['rss_url']
             job_id = f"rss_{hash(rss_url)}"
             
-            # 为每个RSS源创建独立的处理函数（使用闭包捕获rss_url）
+            # 包装处理函数，添加异常保护和日志刷新
+            def wrapped_process(url=rss_url):
+                try:
+                    process_single_rss_source(url)
+                except Exception as e:
+                    logger.error(f"定时任务执行失败 [{url}]: {e}", exc_info=True)
+                finally:
+                    # 确保日志写入磁盘
+                    for handler in logger.handlers:
+                        handler.flush()
+            
+            # 为每个RSS源创建独立的处理函数
             scheduler_instance.add_job(
-                lambda url=rss_url: process_single_rss_source(url),
+                wrapped_process,
                 'interval',
                 minutes=interval,
                 id=job_id,
                 replace_existing=True
             )
             logger.info(f"已添加独立定时任务: {rss_url} (间隔: {interval}分钟)")
+
+def cleanup_old_logs(log_dir="logs", max_total_size_mb=300):
+    """清理旧的日志文件，保持总大小在限制范围内
+    
+    Args:
+        log_dir: 日志目录路径
+        max_total_size_mb: 允许的最大总日志大小（MB）
+    """
+    try:
+        if not os.path.exists(log_dir):
+            return
+        
+        # 获取所有日志文件（包括轮转的备份文件）
+        log_files = []
+        for file in os.listdir(log_dir):
+            if file.startswith('rss_qq_app.log'):
+                file_path = os.path.join(log_dir, file)
+                if os.path.isfile(file_path):
+                    # 获取文件大小和修改时间
+                    file_size = os.path.getsize(file_path)
+                    file_mtime = os.path.getmtime(file_path)
+                    log_files.append({
+                        'path': file_path,
+                        'size': file_size,
+                        'mtime': file_mtime,
+                        'name': file
+                    })
+        
+        if not log_files:
+            return
+        
+        # 计算总大小
+        total_size = sum(f['size'] for f in log_files)
+        total_size_mb = total_size / (1024 * 1024)
+        
+        logger.info(f"日志清理检查：当前总大小 {total_size_mb:.2f}MB，限制 {max_total_size_mb}MB")
+        
+        # 如果超过限制，删除最旧的文件
+        if total_size_mb > max_total_size_mb:
+            # 按修改时间排序（最旧的在前）
+            log_files.sort(key=lambda x: x['mtime'])
+            
+            deleted_count = 0
+            freed_size = 0
+            
+            # 删除最旧的文件，直到总大小低于限制的80%
+            target_size = max_total_size_mb * 0.8 * 1024 * 1024
+            
+            for file_info in log_files:
+                # 保留当前活动的日志文件（不带数字后缀的）
+                if file_info['name'] == 'rss_qq_app.log':
+                    continue
+                
+                if total_size - freed_size > target_size:
+                    try:
+                        os.remove(file_info['path'])
+                        freed_size += file_info['size']
+                        deleted_count += 1
+                        logger.info(f"已删除旧日志: {file_info['name']} ({file_info['size']/1024:.2f}KB)")
+                    except Exception as e:
+                        logger.error(f"删除日志文件失败 {file_info['name']}: {e}")
+                else:
+                    break
+            
+            if deleted_count > 0:
+                new_total_size = (total_size - freed_size) / (1024 * 1024)
+                logger.info(f"日志清理完成：删除 {deleted_count} 个文件，释放 {freed_size/1024/1024:.2f}MB，剩余 {new_total_size:.2f}MB")
+        
+    except Exception as e:
+        logger.error(f"日志清理失败: {e}", exc_info=True)
+
+def log_flush_task():
+    """定期刷新日志的任务"""
+    try:
+        for handler in logger.handlers:
+            handler.flush()
+        logger.debug("日志已刷新到磁盘")
+    except Exception as e:
+        logger.error(f"日志刷新失败: {e}")
+
+def log_maintenance_task():
+    """日志维护任务：刷新日志并清理旧文件"""
+    try:
+        # 刷新日志
+        for handler in logger.handlers:
+            handler.flush()
+        
+        # 清理旧日志（保持总大小在300MB以内）
+        cleanup_old_logs(log_dir="logs", max_total_size_mb=300)
+        
+    except Exception as e:
+        logger.error(f"日志维护任务失败: {e}", exc_info=True)
 
 def start_scheduler():
     """启动调度器"""
@@ -595,9 +711,22 @@ def start_scheduler():
         if configs:
             # 创建新的调度器实例
             scheduler = BackgroundScheduler()
+            
+            # 添加RSS处理任务
             update_scheduler(scheduler, configs)
+            
+            # 添加日志维护任务（每30分钟执行一次：刷新+清理）
+            scheduler.add_job(
+                log_maintenance_task,
+                'interval',
+                minutes=30,
+                id='log_maintenance',
+                replace_existing=True
+            )
+            
             scheduler.start()
             logger.info("RSS监控调度器已启动，将按配置的间隔时间执行定时推送")
+            logger.info("日志维护任务已启动，每30分钟执行一次（刷新+清理）")
         else:
             logger.info("没有配置RSS源，调度器未启动")
 
@@ -623,9 +752,13 @@ def stop_scheduler():
                 scheduler = None
                 logger.info("RSS监控调度器已停止并清空")
             except Exception as e:
-                logger.error(f"停止调度器时出错: {e}")
+                logger.error(f"停止调度器时出错: {e}", exc_info=True)
                 # 强制设置为None
                 scheduler = None
+            finally:
+                # 确保日志写入
+                for handler in logger.handlers:
+                    handler.flush()
         else:
             logger.info("调度器未在运行")
 
